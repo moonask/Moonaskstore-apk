@@ -36,6 +36,8 @@ class PackageInstallerManager(private val context: Context) {
     private val _installState = MutableStateFlow<Map<String, DownloadInstallState>>(emptyMap())
     val installState: StateFlow<Map<String, DownloadInstallState>> = _installState.asStateFlow()
 
+    val showPermissionDialog = MutableStateFlow(false)
+
     fun getStateForApp(appId: String): DownloadInstallState {
         return _installState.value[appId] ?: if (isAppInstalled(appId)) DownloadInstallState.Installed else DownloadInstallState.Idle
     }
@@ -57,6 +59,112 @@ class PackageInstallerManager(private val context: Context) {
         }
     }
 
+    // Track pending package installations: packageName -> appId
+    private val pendingPackages = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    private val prefs by lazy {
+        context.getSharedPreferences("moonask_install_prefs", Context.MODE_PRIVATE)
+    }
+
+    private var packageReceiverRegistered = false
+    private val packageBroadcastReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(recvContext: Context?, intent: Intent?) {
+            val action = intent?.action
+            val installedPkg = intent?.data?.schemeSpecificPart ?: return
+            if (action == Intent.ACTION_PACKAGE_ADDED || action == Intent.ACTION_PACKAGE_REPLACED) {
+                val appId = pendingPackages[installedPkg] ?: findAppIdForPackage(installedPkg)
+                if (appId != null) {
+                    updateState(appId, DownloadInstallState.Installed)
+                    pendingPackages.remove(installedPkg)
+                }
+            }
+        }
+    }
+
+    init {
+        registerPackageReceiver()
+    }
+
+    fun registerPackageReceiver() {
+        if (!packageReceiverRegistered) {
+            try {
+                val filter = android.content.IntentFilter().apply {
+                    addAction(Intent.ACTION_PACKAGE_ADDED)
+                    addAction(Intent.ACTION_PACKAGE_REPLACED)
+                    addDataScheme("package")
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    context.registerReceiver(packageBroadcastReceiver, filter, Context.RECEIVER_EXPORTED)
+                } else {
+                    context.registerReceiver(packageBroadcastReceiver, filter)
+                }
+                packageReceiverRegistered = true
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun unregisterPackageReceiver() {
+        if (packageReceiverRegistered) {
+            try {
+                context.unregisterReceiver(packageBroadcastReceiver)
+                packageReceiverRegistered = false
+            } catch (_: Exception) {}
+        }
+    }
+
+    private var cachedAppList: List<StoreApp> = emptyList()
+
+    fun updateKnownApps(apps: List<StoreApp>) {
+        cachedAppList = apps
+    }
+
+    private fun findAppIdForPackage(pkg: String): String? {
+        return cachedAppList.find { it.packageName == pkg }?.id
+    }
+
+    fun canRequestPackageInstalls(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                context.packageManager.canRequestPackageInstalls()
+            } catch (_: Exception) {
+                true
+            }
+        } else {
+            true
+        }
+    }
+
+    /**
+     * Check if install permission has been prompted before.
+     * Permission should only be prompted once if disabled; if enabled, never prompt.
+     */
+    fun shouldPromptPermission(): Boolean {
+        if (canRequestPackageInstalls()) return false
+        val alreadyPrompted = prefs.getBoolean("has_prompted_unknown_sources", false)
+        return !alreadyPrompted
+    }
+
+    fun markPermissionPrompted() {
+        prefs.edit().putBoolean("has_prompted_unknown_sources", true).apply()
+    }
+
+    fun openUnknownAppSourcesSettings() {
+        markPermissionPrompted()
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val manageIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(manageIntent)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     fun openInstalledApp(packageName: String): Boolean {
         return try {
             val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
@@ -72,60 +180,30 @@ class PackageInstallerManager(private val context: Context) {
         }
     }
 
+    val superStorageManager = com.example.data.storage.SuperApkStorageManager(context)
+
     suspend fun downloadAndInstall(app: StoreApp) = withContext(Dispatchers.IO) {
         val appId = app.id
+        pendingPackages[app.packageName] = appId
         updateState(appId, DownloadInstallState.Preparing)
 
         try {
-            val localSource = if (app.localApkPath.isNotBlank()) File(app.localApkPath) else null
-            val apkFile = if (localSource != null && localSource.exists()) {
-                updateState(appId, DownloadInstallState.Downloading(1f, localSource.length(), localSource.length()))
-                localSource
-            } else {
-                val apkDir = File(context.cacheDir, "moonask_apks").apply { mkdirs() }
-                val targetFile = File(apkDir, "${app.packageName}_v${app.versionCode}.apk")
-
-                // Real HTTP Download when a download URL is available
-                val downloadUrl = app.apkDownloadUrl.ifBlank {
-                    "https://raw.githubusercontent.com/android/platform-samples/main/samples/base/app.apk"
-                }
-
-                var downloadedBytes = 0L
-                val totalBytes = (app.sizeMb * 1024 * 1024).toLong()
-
-                try {
-                    val url = URL(downloadUrl)
-                    val connection = (url.openConnection() as HttpURLConnection).apply {
-                        connectTimeout = 15000
-                        readTimeout = 20000
-                        requestMethod = "GET"
-                        setRequestProperty("User-Agent", "MoonAskStore/1.0 (Android)")
+            // Check unknown apps permission first time only if disabled
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !canRequestPackageInstalls()) {
+                if (shouldPromptPermission()) {
+                    withContext(Dispatchers.Main) {
+                        showPermissionDialog.value = true
                     }
-
-                    if (connection.responseCode in 200..299) {
-                        val stream: InputStream = connection.inputStream
-                        val output = FileOutputStream(targetFile)
-                        val buffer = ByteArray(8192)
-                        var bytesRead: Int
-                        val contentLength = if (connection.contentLengthLong > 0) connection.contentLengthLong else totalBytes
-
-                        while (stream.read(buffer).also { bytesRead = it } != -1) {
-                            output.write(buffer, 0, bytesRead)
-                            downloadedBytes += bytesRead
-                            val progress = (downloadedBytes.toFloat() / contentLength.toFloat()).coerceIn(0f, 1f)
-                            updateState(appId, DownloadInstallState.Downloading(progress, downloadedBytes, contentLength))
-                        }
-                        output.flush()
-                        output.close()
-                        stream.close()
-                    } else {
-                        fallbackLocalApkGeneration(targetFile, appId, totalBytes)
-                    }
-                } catch (_: Exception) {
-                    // If offline or network unavailable, generate local secure APK payload
-                    fallbackLocalApkGeneration(targetFile, appId, totalBytes)
                 }
-                targetFile
+            }
+
+            val apkFile = superStorageManager.downloadOrRetrieveApk(
+                urlOrPath = if (app.localApkPath.isNotBlank()) app.localApkPath else app.apkDownloadUrl,
+                expectedSha256 = app.sha256Checksum,
+                packageName = app.packageName,
+                versionCode = app.versionCode
+            ) { progress, downloaded, total ->
+                updateState(appId, DownloadInstallState.Downloading(progress, downloaded, total))
             }
 
             // Verify SHA-256 Checksum
@@ -147,48 +225,24 @@ class PackageInstallerManager(private val context: Context) {
         }
     }
 
-    private suspend fun fallbackLocalApkGeneration(apkFile: File, appId: String, totalBytes: Long) {
-        val out = FileOutputStream(apkFile)
-        // Write standard ZIP/APK magic header (PK\003\004)
-        out.write(byteArrayOf(0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x08, 0x00))
-        val chunkSize = 64 * 1024
-        val dummyData = ByteArray(chunkSize)
-        var written = 8L
-        val simulatedTotal = totalBytes.coerceAtLeast(1024 * 1024)
-
-        while (written < simulatedTotal) {
-            val toWrite = minOf(chunkSize.toLong(), simulatedTotal - written).toInt()
-            out.write(dummyData, 0, toWrite)
-            written += toWrite
-            val progress = (written.toFloat() / simulatedTotal.toFloat()).coerceIn(0f, 1f)
-            updateState(appId, DownloadInstallState.Downloading(progress, written, simulatedTotal))
-            kotlinx.coroutines.delay(20)
-        }
-        out.flush()
-        out.close()
-    }
-
     fun launchPackageInstaller(apkUri: Uri) {
         try {
-            // Check Android 8.0+ unknown sources permission
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                if (!context.packageManager.canRequestPackageInstalls()) {
-                    val manageIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                        data = Uri.parse("package:${context.packageName}")
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    context.startActivity(manageIntent)
-                }
-            }
-
             val installIntent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(apkUri, "application/vnd.android.package-archive")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
+
+            // Explicitly grant URI read permissions to system package installer packages
+            val resInfoList = context.packageManager.queryIntentActivities(installIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            for (resolveInfo in resInfoList) {
+                val pkgName = resolveInfo.activityInfo.packageName
+                context.grantUriPermission(pkgName, apkUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
             context.startActivity(installIntent)
         } catch (_: Exception) {
-            // Fallback for older package installer action
             try {
                 @Suppress("DEPRECATION")
                 val fallbackIntent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
@@ -204,7 +258,48 @@ class PackageInstallerManager(private val context: Context) {
         }
     }
 
+    /**
+     * Called when MainActivity resumes. Checks installation status of all apps
+     * and clears any endless spinning states if installation was cancelled or completed.
+     */
+    fun onActivityResume(apps: List<StoreApp> = cachedAppList) {
+        updateKnownApps(apps)
+        val currentStates = _installState.value
+        val updatedStates = currentStates.toMutableMap()
+
+        for (app in apps) {
+            val isInstalled = isAppInstalled(app.packageName)
+            val currentState = currentStates[app.id]
+
+            if (isInstalled) {
+                updatedStates[app.id] = DownloadInstallState.Installed
+                pendingPackages.remove(app.packageName)
+            } else if (currentState is DownloadInstallState.PromptingInstaller) {
+                // If user returned from package installer without installing, reset to Idle so it does not spin indefinitely
+                updatedStates[app.id] = DownloadInstallState.Idle
+                pendingPackages.remove(app.packageName)
+            }
+        }
+        _installState.value = updatedStates
+    }
+
+    fun startBackgroundInstallService(app: StoreApp) {
+        ApkDownloadInstallService.startDownload(
+            context = context,
+            appId = app.id,
+            appName = app.name,
+            packageName = app.packageName,
+            downloadUrl = app.apkDownloadUrl,
+            localPath = app.localApkPath,
+            versionCode = app.versionCode
+        )
+    }
+
     fun cancelDownload(appId: String) {
+        updateState(appId, DownloadInstallState.Idle)
+    }
+
+    fun resetState(appId: String) {
         updateState(appId, DownloadInstallState.Idle)
     }
 

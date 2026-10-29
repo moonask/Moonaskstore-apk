@@ -27,6 +27,8 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -64,6 +66,7 @@ import com.example.ui.theme.MoonAskBlueDark
 import com.example.ui.theme.MoonAskBluePrimary
 import com.example.ui.theme.MoonAskCyanAccent
 import com.example.ui.theme.MoonAskCyanLight
+import com.example.ui.theme.MoonAskEmerald
 import com.example.ui.theme.MoonAskNavy
 
 @Composable
@@ -350,90 +353,288 @@ fun HomeScreen(
             }
         }
 
-        // Admin Special Applications Section (Visible to all users, special badge & lock)
-        val adminSpecialApps = storeDisplayApps.filter { it.isAdminSpecial }
-        if (selectedCategoryId == "all" && adminSpecialApps.isNotEmpty()) {
-            item {
-                Column(modifier = Modifier.padding(top = 10.dp)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = MoonAskAmber, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Admin Special Apps",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MoonAskAmber
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = MoonAskAmber.copy(alpha = 0.2f)
-                        ) {
-                            Text(
-                                text = "PASSCODE REQUIRED",
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MoonAskAmber
+        // "Your published app" Banner (Matching PDF Page 1)
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .clickable { onProfileClick() },
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MoonAskNavy)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.linearGradient(
+                                listOf(MoonAskNavy, Color(0xFF1E3A8A), MoonAskBluePrimary)
                             )
+                        )
+                        .padding(18.dp)
+                ) {
+                    Text(
+                        text = "Your published app",
+                        color = Color.White.copy(alpha = 0.8f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Your published app",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Manage, update and grow your apps on MoonAsk",
+                        color = Color.White.copy(alpha = 0.85f),
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.White.copy(alpha = 0.2f),
+                        modifier = Modifier.clickable { onProfileClick() }
+                    ) {
+                        Text(
+                            text = "View Apps →",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // Recommended for you (Matching PDF Page 1 3-item Grid/Row)
+        item {
+            Column(modifier = Modifier.padding(top = 12.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Recommended for you",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = "See all ›",
+                        fontSize = 12.sp,
+                        color = MoonAskBluePrimary,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clickable { onSearchClick() }
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    val recommendedList = storeDisplayApps.filter { !it.isAdminSpecial }.take(3)
+                    recommendedList.forEach { app ->
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { onAppClick(app.id) },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(62.dp)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(MaterialTheme.colorScheme.surface),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    AsyncImage(
+                                        model = app.iconUrl,
+                                        contentDescription = app.name,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = app.name,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(vertical = 2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Star,
+                                        contentDescription = null,
+                                        tint = MoonAskAmber,
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = String.format("%.1f", app.rating),
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                val isInstalled = installerManager.isAppInstalled(app.packageName)
+                                val state = installStates[app.id] ?: installerManager.getStateForApp(app.id)
+                                Button(
+                                    onClick = {
+                                        if (isInstalled) {
+                                            installerManager.openInstalledApp(app.packageName)
+                                        } else {
+                                            onInstallApp(app)
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(30.dp),
+                                    shape = RoundedCornerShape(15.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isInstalled) MoonAskEmerald else MoonAskBluePrimary
+                                    ),
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    if (state is com.example.data.installer.DownloadInstallState.PromptingInstaller) {
+                                        Text("Installing...", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    } else {
+                                        Text(if (isInstalled) "Open" else "Install", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
+                                }
+                            }
                         }
                     }
+                }
+            }
+        }
 
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        items(adminSpecialApps) { app ->
-                            Card(
+        // Popular Section (Matching PDF Page 1 3-item Grid/Row)
+        item {
+            Column(modifier = Modifier.padding(top = 16.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Popular",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = "See all ›",
+                        fontSize = 12.sp,
+                        color = MoonAskBluePrimary,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clickable { onSearchClick() }
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    val popularList = storeDisplayApps.filter { !it.isAdminSpecial }.drop(1).take(3)
+                    popularList.forEach { app ->
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { onAppClick(app.id) },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Column(
                                 modifier = Modifier
-                                    .width(170.dp)
-                                    .clickable { onAppClick(app.id) },
-                                shape = RoundedCornerShape(16.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, MoonAskAmber.copy(alpha = 0.6f))
+                                    .fillMaxWidth()
+                                    .padding(10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(56.dp)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .align(Alignment.CenterHorizontally),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        AsyncImage(
-                                            model = app.iconUrl,
-                                            contentDescription = app.name,
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentScale = ContentScale.Crop
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = MoonAskAmber, modifier = Modifier.size(12.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = app.name,
-                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                    Text(
-                                        text = "${app.sizeMb} MB • Admin Special",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MoonAskAmber
+                                Box(
+                                    modifier = Modifier
+                                        .size(62.dp)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(MaterialTheme.colorScheme.surface),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    AsyncImage(
+                                        model = app.iconUrl,
+                                        contentDescription = app.name,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
                                     )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "Requires Admin Passcode",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontSize = 9.sp
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = app.name,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(vertical = 2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Star,
+                                        contentDescription = null,
+                                        tint = MoonAskAmber,
+                                        modifier = Modifier.size(11.dp)
                                     )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = String.format("%.1f", app.rating),
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                val isInstalled = installerManager.isAppInstalled(app.packageName)
+                                val state = installStates[app.id] ?: installerManager.getStateForApp(app.id)
+                                Button(
+                                    onClick = {
+                                        if (isInstalled) {
+                                            installerManager.openInstalledApp(app.packageName)
+                                        } else {
+                                            onInstallApp(app)
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(30.dp),
+                                    shape = RoundedCornerShape(15.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isInstalled) MoonAskEmerald else MoonAskBluePrimary
+                                    ),
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    if (state is com.example.data.installer.DownloadInstallState.PromptingInstaller) {
+                                        Text("Installing...", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    } else {
+                                        Text(if (isInstalled) "Open" else "Install", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
                                 }
                             }
                         }

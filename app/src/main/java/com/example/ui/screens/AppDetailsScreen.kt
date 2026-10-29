@@ -385,8 +385,8 @@ fun AppDetailsScreen(
             // Download & Install Action Section
             item {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    when (installState) {
-                        is DownloadInstallState.Downloading -> {
+                    when {
+                        installState is DownloadInstallState.Downloading -> {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -423,7 +423,31 @@ fun AppDetailsScreen(
                                 }
                             }
                         }
-                        is DownloadInstallState.Preparing, is DownloadInstallState.VerifyingChecksum, is DownloadInstallState.PromptingInstaller -> {
+                        isInstalled || installState is DownloadInstallState.Installed -> {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Button(
+                                    onClick = { installerManager.openInstalledApp(app.packageName) },
+                                    modifier = Modifier.weight(1f).height(50.dp).testTag("details_open_button"),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MoonAskEmerald)
+                                ) {
+                                    Icon(imageVector = Icons.Default.Launch, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Open App", fontWeight = FontWeight.Bold)
+                                }
+                                OutlinedButton(
+                                    onClick = { onSafeInstallClick() },
+                                    modifier = Modifier.height(50.dp),
+                                    shape = RoundedCornerShape(14.dp)
+                                ) {
+                                    Text("Reinstall")
+                                }
+                            }
+                        }
+                        installState is DownloadInstallState.Preparing || installState is DownloadInstallState.VerifyingChecksum -> {
                             Button(
                                 onClick = {},
                                 enabled = false,
@@ -437,55 +461,58 @@ fun AppDetailsScreen(
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text(
-                                    if (installState is DownloadInstallState.VerifyingChecksum) "Verifying SHA-256..." else "Launching Android Installer..."
+                                    if (installState is DownloadInstallState.VerifyingChecksum) "Verifying SHA-256..." else "Preparing APK..."
                                 )
                             }
                         }
-                        else -> {
-                            if (isInstalled || installState is DownloadInstallState.Installed) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Button(
-                                        onClick = { installerManager.openInstalledApp(app.packageName) },
-                                        modifier = Modifier.weight(1f).height(50.dp).testTag("details_open_button"),
-                                        shape = RoundedCornerShape(14.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = MoonAskEmerald)
-                                    ) {
-                                        Icon(imageVector = Icons.Default.Launch, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Open App", fontWeight = FontWeight.Bold)
-                                    }
-                                    OutlinedButton(
-                                        onClick = { onSafeInstallClick() },
-                                        modifier = Modifier.height(50.dp),
-                                        shape = RoundedCornerShape(14.dp)
-                                    ) {
-                                        Text("Reinstall")
-                                    }
-                                }
-                            } else {
+                        installState is DownloadInstallState.PromptingInstaller -> {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
                                 Button(
                                     onClick = { onSafeInstallClick() },
-                                    modifier = Modifier.fillMaxWidth().height(50.dp).testTag("details_install_button"),
+                                    modifier = Modifier.weight(1f).height(50.dp),
                                     shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (app.isAdminSpecial) MoonAskAmber else MoonAskBluePrimary,
-                                        contentColor = if (app.isAdminSpecial) Color.Black else Color.White
-                                    )
+                                    colors = ButtonDefaults.buttonColors(containerColor = MoonAskBluePrimary.copy(alpha = 0.9f))
                                 ) {
-                                    Icon(
-                                        imageVector = if (app.isAdminSpecial) Icons.Default.Lock else Icons.Default.Download,
-                                        contentDescription = null
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = Color.White
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = if (app.isAdminSpecial) "Unlock & Install (${app.sizeMb} MB)" else "Install (${app.sizeMb} MB)",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp
-                                    )
+                                    Text("Installing...", fontWeight = FontWeight.Bold)
                                 }
+                                OutlinedButton(
+                                    onClick = { installerManager.resetState(app.id) },
+                                    modifier = Modifier.height(50.dp),
+                                    shape = RoundedCornerShape(14.dp)
+                                ) {
+                                    Text("Reset")
+                                }
+                            }
+                        }
+                        else -> {
+                            Button(
+                                onClick = { onSafeInstallClick() },
+                                modifier = Modifier.fillMaxWidth().height(50.dp).testTag("details_install_button"),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (app.isAdminSpecial) MoonAskAmber else MoonAskBluePrimary,
+                                    contentColor = if (app.isAdminSpecial) Color.Black else Color.White
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = if (app.isAdminSpecial) Icons.Default.Lock else Icons.Default.Download,
+                                    contentDescription = null
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (app.isAdminSpecial) "Unlock & Install (${app.sizeMb} MB)" else "Install (${app.sizeMb} MB)",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
                             }
                         }
                     }

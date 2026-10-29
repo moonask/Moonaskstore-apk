@@ -48,6 +48,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -107,6 +109,8 @@ fun SuperAdminScreen(
 
     // Special Passcode Editor state
     var newSpecialPasscodeInput by remember { mutableStateOf("") }
+    var appForPasscodeEdit by remember { mutableStateOf<StoreApp?>(null) }
+    var appSpecificPasscodeInput by remember { mutableStateOf("") }
 
     // Password visibility toggle map (uid -> isVisible)
     var passwordVisibilityMap by remember { mutableStateOf(mapOf<String, Boolean>()) }
@@ -754,41 +758,57 @@ fun SuperAdminScreen(
                     }
 
                     item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "All Store Apps - Toggle Special & Passcode",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MoonAskAmber.copy(alpha = 0.15f)
+                            ) {
+                                Text(
+                                    text = "${apps.count { it.isAdminSpecial }} Special Active",
+                                    color = MoonAskAmber,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                         Text(
-                            text = "Admin Special Applications",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(top = 10.dp)
+                            text = "Toggle 'Special Status' on any app below. Special apps require a matching numerical passcode to access and download in MoonAsk Store.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
                         )
                     }
 
-                    val specialApps = apps.filter { it.isAdminSpecial }
-                    if (specialApps.isEmpty()) {
-                        item {
-                            Text(
-                                text = "No Admin Special apps published yet. Use Developer Portal to publish a Special App with passcode protection.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                    items(apps) { app ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (app.isAdminSpecial) MoonAskAmber.copy(alpha = 0.6f) else Color.Transparent
                             )
-                        }
-                    } else {
-                        items(specialApps) { app ->
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, MoonAskAmber.copy(alpha = 0.5f))
-                            ) {
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
                                 Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(14.dp),
+                                    modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(50.dp)
-                                            .clip(RoundedCornerShape(12.dp))
+                                            .size(48.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(MaterialTheme.colorScheme.surface)
                                     ) {
                                         AsyncImage(
                                             model = app.iconUrl,
@@ -800,24 +820,91 @@ fun SuperAdminScreen(
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = MoonAskAmber, modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
                                             Text(app.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                            if (app.isAdminSpecial) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Icon(
+                                                    imageVector = Icons.Default.Lock,
+                                                    contentDescription = null,
+                                                    tint = MoonAskAmber,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
                                         }
-                                        Text("${app.packageName} • v${app.versionName}", style = MaterialTheme.typography.labelSmall)
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Surface(
-                                            shape = RoundedCornerShape(4.dp),
-                                            color = MoonAskAmber.copy(alpha = 0.15f)
+                                        Text(
+                                            text = "${app.packageName} • v${app.versionName}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    // Special Switch
+                                    Switch(
+                                        checked = app.isAdminSpecial,
+                                        onCheckedChange = { isChecked ->
+                                            repository.toggleAppSpecial(app.id, isChecked, currentSpecialPasscode)
+                                            Toast.makeText(
+                                                context,
+                                                if (isChecked) "${app.name} set as Admin Special App" else "${app.name} reverted to Public Store App",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Color.Black,
+                                            checkedTrackColor = MoonAskAmber
+                                        )
+                                    )
+                                }
+
+                                if (app.isAdminSpecial) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surface,
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, MoonAskAmber.copy(alpha = 0.3f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
-                                            Text(
-                                                text = "Required Passcode: ${app.specialAccessPasscode.ifBlank { currentSpecialPasscode }}",
-                                                fontFamily = FontFamily.Monospace,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MoonAskAmber,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.VpnKey,
+                                                    contentDescription = null,
+                                                    tint = MoonAskAmber,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "Access Passcode: ",
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Text(
+                                                    text = app.specialAccessPasscode.ifBlank { currentSpecialPasscode },
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    fontSize = 13.sp,
+                                                    color = MoonAskAmber,
+                                                    fontFamily = FontFamily.Monospace
+                                                )
+                                            }
+
+                                            OutlinedButton(
+                                                onClick = {
+                                                    appForPasscodeEdit = app
+                                                    appSpecificPasscodeInput = app.specialAccessPasscode.ifBlank { currentSpecialPasscode }
+                                                },
+                                                shape = RoundedCornerShape(6.dp),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                modifier = Modifier.height(30.dp)
+                                            ) {
+                                                Icon(imageVector = Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(12.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Assign Passcode", fontSize = 10.sp)
+                                            }
                                         }
                                     }
                                 }
@@ -921,6 +1008,58 @@ fun SuperAdminScreen(
                     selectedAppForAction = null
                     actionType = null
                 }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Assign Custom Numerical Passcode Dialog
+    if (appForPasscodeEdit != null) {
+        val targetApp = appForPasscodeEdit!!
+        AlertDialog(
+            onDismissRequest = { appForPasscodeEdit = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(imageVector = Icons.Default.VpnKey, contentDescription = null, tint = MoonAskAmber)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Assign Passcode")
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Set custom access passcode for '${targetApp.name}'. Only users who enter this code can download or install this app.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = appSpecificPasscodeInput,
+                        onValueChange = { appSpecificPasscodeInput = it.filter { ch -> ch.isDigit() } },
+                        label = { Text("Numerical Passcode (e.g. 7996)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (appSpecificPasscodeInput.isNotBlank()) {
+                            repository.updateAppPasscode(targetApp.id, appSpecificPasscodeInput)
+                            Toast.makeText(context, "Passcode updated to '$appSpecificPasscodeInput' for ${targetApp.name}", Toast.LENGTH_SHORT).show()
+                            appForPasscodeEdit = null
+                        } else {
+                            Toast.makeText(context, "Please enter a numerical passcode", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MoonAskAmber, contentColor = Color.Black)
+                ) {
+                    Text("Save Passcode", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { appForPasscodeEdit = null }) {
                     Text("Cancel")
                 }
             }

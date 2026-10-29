@@ -4,6 +4,7 @@ import com.example.data.model.AppCategory
 import com.example.data.model.AppReel
 import com.example.data.model.AppReport
 import com.example.data.model.AppReview
+import com.example.data.model.AppThemeMode
 import com.example.data.model.PublicationStatus
 import com.example.data.model.StoreApp
 import com.example.data.model.UserAccount
@@ -65,6 +66,71 @@ class StoreRepository {
     fun setAdminSpecialPasscode(passcode: String) {
         if (passcode.isNotBlank()) {
             _adminSpecialPasscode.value = passcode.trim()
+        }
+    }
+
+    // Material 3 Theme Mode: System, Light, Dark
+    private val _themeMode = MutableStateFlow(AppThemeMode.SYSTEM)
+    val themeMode: StateFlow<AppThemeMode> = _themeMode.asStateFlow()
+
+    fun setThemeMode(mode: AppThemeMode) {
+        _themeMode.value = mode
+    }
+
+    // Session Unlocked Special App IDs
+    private val _unlockedAppIds = MutableStateFlow<Set<String>>(emptySet())
+    val unlockedAppIds: StateFlow<Set<String>> = _unlockedAppIds.asStateFlow()
+
+    fun verifyAndUnlockSpecialApp(appId: String, enteredPasscode: String): Boolean {
+        val user = _currentUser.value
+        // Super admin can always access
+        if (user?.email.equals(SUPER_ADMIN_EMAIL, ignoreCase = true) || user?.role == UserRole.ADMIN) {
+            _unlockedAppIds.value = _unlockedAppIds.value + appId
+            return true
+        }
+        val app = _apps.value.find { it.id == appId } ?: return false
+        val requiredPasscode = app.specialAccessPasscode.ifBlank { _adminSpecialPasscode.value }
+        val isCorrect = enteredPasscode.trim() == requiredPasscode.trim() || enteredPasscode.trim() == _adminSpecialPasscode.value.trim()
+        if (isCorrect) {
+            _unlockedAppIds.value = _unlockedAppIds.value + appId
+        }
+        return isCorrect
+    }
+
+    fun isAppUnlocked(appId: String): Boolean {
+        val user = _currentUser.value
+        if (user?.email.equals(SUPER_ADMIN_EMAIL, ignoreCase = true) || user?.role == UserRole.ADMIN) {
+            return true
+        }
+        val app = _apps.value.find { it.id == appId } ?: return true
+        if (!app.isAdminSpecial) return true
+        return _unlockedAppIds.value.contains(appId)
+    }
+
+    // Toggle any app as Special and optionally assign a numerical passcode
+    fun toggleAppSpecial(appId: String, isSpecial: Boolean, passcode: String = "") {
+        _apps.value = _apps.value.map { app ->
+            if (app.id == appId) {
+                app.copy(
+                    isAdminSpecial = isSpecial,
+                    specialAccessPasscode = if (isSpecial) {
+                        if (passcode.isNotBlank()) passcode.trim() else (app.specialAccessPasscode.ifBlank { _adminSpecialPasscode.value })
+                    } else ""
+                )
+            } else app
+        }
+    }
+
+    fun updateAppPasscode(appId: String, passcode: String) {
+        if (passcode.isNotBlank()) {
+            _apps.value = _apps.value.map { app ->
+                if (app.id == appId) {
+                    app.copy(
+                        isAdminSpecial = true,
+                        specialAccessPasscode = passcode.trim()
+                    )
+                } else app
+            }
         }
     }
 
@@ -255,12 +321,36 @@ class StoreRepository {
         isUserUploaded: Boolean = true,
         localApkPath: String = "",
         isAdminSpecial: Boolean = false,
-        specialAccessPasscode: String = ""
+        specialAccessPasscode: String = "",
+        websiteUrl: String = "https://moonask.store",
+        developerName: String = "",
+        screenshots: List<String> = emptyList(),
+        storageBucketKey: String = "",
+        storageProvider: String = "MoonAsk SuperBase Cloud Vault"
     ): StoreApp {
         val user = _currentUser.value
         val effectivePasscode = if (isAdminSpecial) {
             specialAccessPasscode.ifBlank { _adminSpecialPasscode.value }
         } else ""
+
+        val finalScreenshots = if (screenshots.isNotEmpty()) {
+            screenshots
+        } else {
+            listOf(
+                "https://images.unsplash.com/photo-1551650975-87deedd944c3?w=600",
+                "https://images.unsplash.com/photo-1526470608268-f674ce90ebd4?w=600",
+                "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600",
+                "https://images.unsplash.com/photo-1517842645767-c639042777db?w=600"
+            )
+        }
+
+        val finalDeveloperName = if (developerName.isNotBlank()) {
+            developerName
+        } else if (isAdminSpecial) {
+            "MoonAsk Super Admin"
+        } else {
+            user?.displayName ?: "Independent Creator"
+        }
 
         val newApp = StoreApp(
             id = "app_${UUID.randomUUID().toString().take(8)}",
@@ -270,11 +360,8 @@ class StoreRepository {
             shortDescription = shortDesc,
             fullDescription = fullDesc,
             iconUrl = iconUrl.ifBlank { "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200" },
-            screenshots = listOf(
-                "https://images.unsplash.com/photo-1551650975-87deedd944c3?w=600",
-                "https://images.unsplash.com/photo-1526470608268-f674ce90ebd4?w=600"
-            ),
-            developerName = if (isAdminSpecial) "MoonAsk Super Admin" else (user?.displayName ?: "Independent Creator"),
+            screenshots = finalScreenshots,
+            developerName = finalDeveloperName,
             developerUid = user?.uid ?: "dev_unknown",
             sizeMb = sizeMb,
             versionName = versionName,
@@ -287,8 +374,11 @@ class StoreRepository {
             localApkPath = localApkPath,
             isAdminSpecial = isAdminSpecial,
             specialAccessPasscode = effectivePasscode,
+            websiteUrl = websiteUrl.ifBlank { "https://moonask.store" },
             publicationStatus = if (user?.role == UserRole.ADMIN) PublicationStatus.PUBLISHED else PublicationStatus.PENDING_REVIEW,
-            submittedAt = System.currentTimeMillis()
+            submittedAt = System.currentTimeMillis(),
+            storageBucketKey = storageBucketKey,
+            storageProvider = storageProvider
         )
 
         _apps.value = listOf(newApp) + _apps.value
@@ -368,6 +458,33 @@ class StoreRepository {
                 reel.copy(isLiked = nextIsLiked, likesCount = (reel.likesCount + delta).coerceAtLeast(0))
             } else reel
         }
+    }
+
+    fun addReel(
+        title: String,
+        videoUrl: String,
+        description: String,
+        linkedAppId: String,
+        linkedAppName: String,
+        creatorName: String = "",
+        thumbnailUrl: String = ""
+    ): AppReel {
+        val user = _currentUser.value
+        val newReel = AppReel(
+            id = "reel_${UUID.randomUUID().toString().take(8)}",
+            creatorUid = user?.uid ?: "creator_upload",
+            creatorName = if (creatorName.isNotBlank()) creatorName else (user?.displayName ?: "Creator"),
+            creatorAvatar = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100",
+            title = title,
+            description = description,
+            videoUrl = videoUrl.ifBlank { "https://assets.mixkit.co/videos/preview/mixkit-young-woman-typing-on-a-laptop-4050-large.mp4" },
+            thumbnailUrl = thumbnailUrl.ifBlank { "https://images.unsplash.com/photo-1551650975-87deedd944c3?w=600" },
+            linkedAppId = linkedAppId,
+            linkedAppName = linkedAppName,
+            likesCount = 124
+        )
+        _reels.value = listOf(newReel) + _reels.value
+        return newReel
     }
 
     private fun initialApps(): List<StoreApp> {

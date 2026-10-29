@@ -181,6 +181,27 @@ fun AppCardItem(
 
             // Action Button
             when {
+                isInstalled || installState is DownloadInstallState.Installed -> {
+                    Button(
+                        onClick = onOpenClick,
+                        modifier = Modifier
+                            .height(38.dp)
+                            .testTag("open_button_${app.id}"),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MoonAskEmerald,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Launch,
+                            contentDescription = "Open",
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Open", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
                 installState is DownloadInstallState.Downloading -> {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -201,7 +222,7 @@ fun AppCardItem(
                         )
                     }
                 }
-                installState is DownloadInstallState.Preparing || installState is DownloadInstallState.VerifyingChecksum || installState is DownloadInstallState.PromptingInstaller -> {
+                installState is DownloadInstallState.Preparing || installState is DownloadInstallState.VerifyingChecksum -> {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.width(72.dp)
@@ -219,25 +240,25 @@ fun AppCardItem(
                         )
                     }
                 }
-                isInstalled || installState is DownloadInstallState.Installed -> {
+                installState is DownloadInstallState.PromptingInstaller -> {
                     Button(
-                        onClick = onOpenClick,
+                        onClick = onInstallClick,
                         modifier = Modifier
                             .height(38.dp)
-                            .testTag("open_button_${app.id}"),
+                            .testTag("installing_button_${app.id}"),
                         shape = RoundedCornerShape(20.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = MoonAskEmerald,
+                            containerColor = MoonAskBluePrimary.copy(alpha = 0.8f),
                             contentColor = Color.White
                         )
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Launch,
-                            contentDescription = "Open",
-                            modifier = Modifier.size(16.dp)
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                            color = Color.White
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Open", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Installing", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
                 else -> {

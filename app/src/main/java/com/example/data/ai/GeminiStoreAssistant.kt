@@ -112,6 +112,74 @@ class GeminiStoreAssistant {
         }
     }
 
+    fun autoAdjustLogo(inputUrl: String): String {
+        val trimmed = inputUrl.trim()
+        if (trimmed.isEmpty()) {
+            return "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=512&h=512&fit=crop&crop=faces"
+        }
+        return if (trimmed.contains("unsplash.com")) {
+            val base = trimmed.substringBefore("?")
+            "$base?w=512&h=512&fit=crop&crop=faces&q=85"
+        } else {
+            trimmed
+        }
+    }
+
+    suspend fun optimizeAppListing(appName: String, rawDesc: String, category: String): StoreListingOptimization = withContext(Dispatchers.IO) {
+        val safeName = appName.ifBlank { "My Android Application" }
+        val prompt = """
+            You are a Google Play Store / MoonAsk Store ASO (App Store Optimization) expert.
+            Optimize this application for publishing:
+            App Name: $safeName
+            Category: $category
+            Draft Description: $rawDesc
+            
+            Provide concise, professional marketing copy for high download conversion.
+        """.trimIndent()
+
+        try {
+            val generativeModel = model
+            if (generativeModel != null) {
+                withTimeout(20_000L) {
+                    val res = generativeModel.generateContent(prompt).text ?: ""
+                    StoreListingOptimization(
+                        suggestedCategory = category,
+                        optimizedShortDesc = "$safeName: Fast, modern, and intuitive Android experience.",
+                        optimizedFullDesc = res.ifBlank { fallbackDescription(safeName, category) },
+                        seoKeywords = listOf("Android", "Fast", "Productivity", "Top Rated", "Offline Ready"),
+                        distributionTips = "Published on MoonAsk Store! Share direct APK download links via Gmail and WhatsApp to boost day-one installations."
+                    )
+                }
+            } else {
+                fallbackOptimization(safeName, category)
+            }
+        } catch (_: Exception) {
+            fallbackOptimization(safeName, category)
+        }
+    }
+
+    private fun fallbackDescription(appName: String, category: String): String {
+        return buildString {
+            append("$appName is an innovative Android application engineered for performance and reliability.\n\n")
+            append("⭐ **Key Features:**\n")
+            append("• Ultra-responsive, clean Material 3 interface\n")
+            append("• Lightweight package footprint and fast APK installation\n")
+            append("• Seamless offline access with instant cache sync\n")
+            append("• Zero intrusive trackers and strict security audit passing\n\n")
+            append("Download today directly on MoonAsk Store.")
+        }
+    }
+
+    private fun fallbackOptimization(appName: String, category: String): StoreListingOptimization {
+        return StoreListingOptimization(
+            suggestedCategory = category,
+            optimizedShortDesc = "$appName: High performance, secure, and modern Android app.",
+            optimizedFullDesc = fallbackDescription(appName, category),
+            seoKeywords = listOf("Android", "APK", "Utility", "Free Download", "MoonAsk Verified"),
+            distributionTips = "Promote your APK with the attached promo Reel video in the MoonAsk Reels feed for maximum visibility."
+        )
+    }
+
     private fun fallbackPermissionAnalysis(appName: String, permissions: List<String>): String {
         val sensitive = permissions.filter { it.contains("LOCATION") || it.contains("CAMERA") || it.contains("STORAGE") || it.contains("RECORD") }
         val normal = permissions - sensitive.toSet()
@@ -129,3 +197,12 @@ class GeminiStoreAssistant {
         }
     }
 }
+
+data class StoreListingOptimization(
+    val suggestedCategory: String,
+    val optimizedShortDesc: String,
+    val optimizedFullDesc: String,
+    val seoKeywords: List<String>,
+    val distributionTips: String
+)
+

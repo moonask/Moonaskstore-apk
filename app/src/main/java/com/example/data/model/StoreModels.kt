@@ -28,12 +28,15 @@ data class StoreApp(
     val publicationStatus: PublicationStatus = PublicationStatus.PUBLISHED,
     val rejectionReason: String = "",
     val privacyPolicyUrl: String = "https://moonask.store/privacy",
+    val websiteUrl: String = "https://moonask.store",
     val supportEmail: String = "support@moonask.store",
     val submittedAt: Long = System.currentTimeMillis(),
     val isUserUploaded: Boolean = false,
     val localApkPath: String = "",
     val isAdminSpecial: Boolean = false,
-    val specialAccessPasscode: String = ""
+    val specialAccessPasscode: String = "",
+    val storageBucketKey: String = "",
+    val storageProvider: String = "MoonAsk SuperBase Cloud Vault"
 )
 
 enum class PublicationStatus {
@@ -84,6 +87,12 @@ enum class UserRole {
     USER,
     DEVELOPER,
     ADMIN
+}
+
+enum class AppThemeMode {
+    SYSTEM,
+    LIGHT,
+    DARK
 }
 
 data class UserAccount(

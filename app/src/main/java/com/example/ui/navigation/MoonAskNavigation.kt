@@ -17,6 +17,10 @@ import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
@@ -26,6 +30,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -76,15 +81,18 @@ enum class Screen {
 fun MoonAskApp(
     repository: StoreRepository,
     installerManager: PackageInstallerManager,
-    aiAssistant: GeminiStoreAssistant
+    aiAssistant: GeminiStoreAssistant,
+    initialAppId: String? = null
 ) {
     val scope = rememberCoroutineScope()
-    var currentScreen by remember { mutableStateOf(Screen.HOME) }
-    var selectedAppId by remember { mutableStateOf<String?>(null) }
+    var currentScreen by remember { mutableStateOf(if (initialAppId != null) Screen.DETAILS else Screen.HOME) }
+    var selectedAppId by remember { mutableStateOf<String?>(initialAppId) }
     var showAiAssistantDialog by remember { mutableStateOf(false) }
 
     // Screen stack for back navigation
-    var screenStack by remember { mutableStateOf(listOf(Screen.HOME)) }
+    var screenStack by remember {
+        mutableStateOf(if (initialAppId != null) listOf(Screen.HOME, Screen.DETAILS) else listOf(Screen.HOME))
+    }
 
     fun navigateTo(screen: Screen, appId: String? = null) {
         if (appId != null) selectedAppId = appId
@@ -245,6 +253,7 @@ fun MoonAskApp(
 
                 Screen.PROFILE -> ProfileScreen(
                     repository = repository,
+                    installerManager = installerManager,
                     onBackClick = { navigateBack() },
                     onSearchClick = { navigateTo(Screen.SEARCH) },
                     onTermsPrivacyClick = { navigateTo(Screen.TERMS_PRIVACY) },
@@ -252,7 +261,8 @@ fun MoonAskApp(
                     onAdminConsoleClick = { navigateTo(Screen.ADMIN_CONSOLE) },
                     onDeveloperPortalClick = { navigateTo(Screen.DEVELOPER_PORTAL) },
                     onCategoriesClick = { navigateTo(Screen.APPS) },
-                    onLoginClick = { navigateTo(Screen.LOGIN) }
+                    onLoginClick = { navigateTo(Screen.LOGIN) },
+                    onAppClick = { appId -> navigateTo(Screen.DETAILS, appId) }
                 )
 
                 Screen.DETAILS -> {
@@ -317,6 +327,35 @@ fun MoonAskApp(
                     onAppClick = { appId ->
                         showAiAssistantDialog = false
                         navigateTo(Screen.DETAILS, appId)
+                    }
+                )
+            }
+
+            // Install Unknown Apps Permission Dialog (Prompted only once if disabled; skipped if already enabled)
+            val showPermissionPrompt by installerManager.showPermissionDialog.collectAsState()
+            if (showPermissionPrompt) {
+                AlertDialog(
+                    onDismissRequest = { installerManager.showPermissionDialog.value = false },
+                    icon = { Icon(Icons.Default.Security, contentDescription = null, tint = MoonAskBluePrimary) },
+                    title = { Text("Install Permission Required", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) },
+                    text = {
+                        Text("To install apps directly onto your Android device home screen, please enable 'Allow from this source' for MoonAsk Store in system settings.")
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                installerManager.showPermissionDialog.value = false
+                                installerManager.openUnknownAppSourcesSettings()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MoonAskBluePrimary)
+                        ) {
+                            Text("Open Settings")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { installerManager.showPermissionDialog.value = false }) {
+                            Text("Cancel")
+                        }
                     }
                 )
             }
